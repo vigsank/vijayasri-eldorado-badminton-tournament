@@ -47,7 +47,7 @@ app.use('/api', apiRoutes);
 
 // Serve React app for any other routes in production (SPA fallback)
 if (isProduction) {
-    app.get('/(.*)', (req, res) => {
+    app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, '../client/dist/index.html'));
     });
 }
