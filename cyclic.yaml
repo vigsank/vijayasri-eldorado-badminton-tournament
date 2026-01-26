@@ -1,0 +1,17 @@
+# Cyclic deployment configuration
+# This file helps configure your app for Cyclic deployment
+
+# Environment variables
+env:
+  NODE_ENV: production
+  PORT: 3001
+
+# Build configuration
+build:
+  # Cyclic automatically runs npm install
+  # We need to ensure client is built
+  command: cd client && npm install && npm run build && cd ..
+
+# Start configuration  
+start:
+  command: npm run start:prod

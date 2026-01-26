@@ -1,0 +1,33 @@
+# Koyeb deployment configuration
+# This file is optional - you can also deploy via the Koyeb web interface
+
+name: vijayasri-badminton-manager
+type: web
+
+env:
+  - key: NODE_ENV
+    value: production
+
+ports:
+  - port: 3001
+    protocol: http
+
+routes:
+  - path: /
+    port: 3001
+
+build:
+  type: buildpack
+  buildCommand: npm install --production=false && npm run build
+  runCommand: npm run start:prod
+
+resources:
+  instance_type: free
+
+regions:
+  - sin  # Singapore - closest to India
+
+health_checks:
+  - http:
+      path: /api/data
+      port: 3001
