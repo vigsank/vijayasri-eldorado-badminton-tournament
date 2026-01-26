@@ -1,0 +1,15 @@
+# Render Blueprint - https://render.com/docs/blueprint-spec
+# This file defines the infrastructure for the Vijayasri Badminton Manager app
+
+services:
+  - type: web
+    name: vijayasri-badminton-manager
+    runtime: node
+    region: singapore  # Choose closest region to India
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /api/data
