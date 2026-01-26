@@ -88,10 +88,13 @@ git push origin main
 
 ## Troubleshooting
 
-### Build Fails
+### Build Fails with npm/Rollup Error
+If you encounter the Rollup platform binary error, Render now uses Docker deployment which bypasses this issue entirely. The `render.yaml` is configured to use Docker runtime.
+
+### Build Fails (General)
 - Check the build logs in Render dashboard
 - Ensure all dependencies are in `package.json`
-- Try running `npm install && npm run build` locally first
+- Docker build handles all dependency installation automatically
 
 ### App Crashes
 - Check the runtime logs

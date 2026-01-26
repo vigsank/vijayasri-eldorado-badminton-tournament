@@ -4,12 +4,13 @@
 services:
   - type: web
     name: vijayasri-badminton-manager
-    runtime: node
+    runtime: docker
     region: singapore  # Choose closest region to India
     plan: free
-    buildCommand: npm install --include=dev && cd client && npm install && cd .. && npm run build
-    startCommand: npm run start:prod
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: 3001
     healthCheckPath: /api/data
