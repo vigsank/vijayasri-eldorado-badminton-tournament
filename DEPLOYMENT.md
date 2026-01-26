@@ -41,7 +41,7 @@ This guide explains how to deploy the Badminton Manager application to **Render*
    - **Region**: Singapore (closest to India)
    - **Branch**: `main`
    - **Runtime**: Node
-   - **Build Command**: `npm install && npm run build`
+   - **Build Command**: `npm install --include=dev && npm run build`
    - **Start Command**: `npm run start:prod`
    - **Plan**: Free
 
