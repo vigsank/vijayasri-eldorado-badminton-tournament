@@ -52,7 +52,7 @@ router.get('/admin/list', (req, res) => {
 });
 
 // GET /api/admin/super-admins - Get list of super admins
-router.get('/api/admin/super-admins', (req, res) => {
+router.get('/admin/super-admins', (req, res) => {
     const superAdmins = readSuperAdmins();
     res.json({ superAdmins });
 });
