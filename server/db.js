@@ -2,24 +2,33 @@ const fs = require('fs');
 const path = require('path');
 
 const DATA_DIR = path.join(__dirname, 'data');
+const ASSETS_DIR = path.join(__dirname, 'assets');
 const TOURNAMENT_FILE = path.join(DATA_DIR, 'tournament.json');
+const TOURNAMENT_SEED_FILE = path.join(ASSETS_DIR, 'tournament.seed.json');
 const ADMINS_FILE = path.join(DATA_DIR, 'admins.json');
 const SUPER_ADMINS_FILE = path.join(DATA_DIR, 'super-admins.json');
 const { COMMITTEE_PHONES } = require('./constants');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR);
+    fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Initialize tournament file if not exists
+// Initialize tournament file from seed if not exists
 if (!fs.existsSync(TOURNAMENT_FILE)) {
-    fs.writeFileSync(TOURNAMENT_FILE, JSON.stringify({
-        players: [],
-        matches: [],
-        categories: [],
-        courts: []
-    }, null, 2));
+    console.log('Tournament data file not found. Initializing from seed...');
+    if (fs.existsSync(TOURNAMENT_SEED_FILE)) {
+        fs.copyFileSync(TOURNAMENT_SEED_FILE, TOURNAMENT_FILE);
+        console.log('Tournament data initialized from seed file.');
+    } else {
+        console.log('Seed file not found. Creating empty tournament data.');
+        fs.writeFileSync(TOURNAMENT_FILE, JSON.stringify({
+            players: [],
+            matches: [],
+            categories: [],
+            courts: []
+        }, null, 2));
+    }
 }
 
 // Initialize admins file if not exists

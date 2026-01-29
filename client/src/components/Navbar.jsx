@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Box, Flex, Heading, Button, Spacer, IconButton,
     useColorModeValue, useDisclosure, Modal, ModalOverlay,
@@ -11,7 +11,7 @@ import {
 } from '@chakra-ui/react';
 import { NavLink as RouterLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiSettings, FiTrash2, FiUserPlus, FiMenu } from 'react-icons/fi';
+import { FiSettings, FiTrash2, FiUserPlus, FiMenu, FiDownload, FiUpload } from 'react-icons/fi';
 
 const NavButton = ({ to, children, onClick }) => {
     const location = useLocation();
@@ -71,7 +71,7 @@ const Navbar = () => {
                             <NavButton to="/admin">
                                 {isAdmin ? 'Committee' : 'Admin'}
                             </NavButton>
-                            {isSuperAdmin && (
+                            {isAdmin && (
                                 <IconButton
                                     icon={<FiSettings />}
                                     variant="ghost"
@@ -91,7 +91,7 @@ const Navbar = () => {
                     {/* Mobile Menu Button */}
                     <Show below="md">
                         <Flex gap={2} alignItems="center">
-                            {isSuperAdmin && (
+                            {isAdmin && (
                                 <IconButton
                                     icon={<FiSettings />}
                                     variant="ghost"
@@ -149,18 +149,20 @@ const Navbar = () => {
                 </DrawerContent>
             </Drawer>
 
-            {isSuperAdmin && <SettingsModal isOpen={isSettingsOpen} onClose={onSettingsClose} userPhone={userPhone} />}
+            {isAdmin && <SettingsModal isOpen={isSettingsOpen} onClose={onSettingsClose} userPhone={userPhone} isSuperAdmin={isSuperAdmin} />}
         </>
     );
 };
 
-const SettingsModal = ({ isOpen, onClose, userPhone }) => {
+const SettingsModal = ({ isOpen, onClose, userPhone, isSuperAdmin }) => {
     const [admins, setAdmins] = useState([]);
     const [superAdmins, setSuperAdmins] = useState([]);
     const [newAdmin, setNewAdmin] = useState('');
     const [activeSection, setActiveSection] = useState('main'); // 'main', 'reset-1', 'reset-2'
+    const [isUploading, setIsUploading] = useState(false);
     const toast = useToast();
     const cancelRef = React.useRef();
+    const fileInputRef = useRef(null);
 
     const fetchAdmins = async () => {
         try {
@@ -236,59 +238,175 @@ const SettingsModal = ({ isOpen, onClose, userPhone }) => {
         }
     };
 
+    const handleDownloadBackup = async () => {
+        try {
+            const response = await fetch(`/api/backup/download?phone=${encodeURIComponent(userPhone)}`);
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Download failed');
+            }
+            const blob = await response.blob();
+            const contentDisposition = response.headers.get('Content-Disposition');
+            const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+            const filename = filenameMatch ? filenameMatch[1] : 'tournament-backup.json';
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            toast({ title: "Backup Downloaded", status: "success", duration: 3000 });
+        } catch (err) {
+            toast({ title: "Download Failed", description: err.message, status: "error", duration: 5000 });
+        }
+    };
+
+    const handleUploadBackup = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('backup', file);
+            formData.append('phone', userPhone);
+
+            const response = await fetch('/api/backup/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || 'Upload failed');
+            }
+
+            toast({
+                title: "Backup Restored",
+                description: `Restored ${result.stats.matches} matches, ${result.stats.players} players`,
+                status: "success",
+                duration: 5000
+            });
+        } catch (err) {
+            toast({ title: "Upload Failed", description: err.message, status: "error", duration: 5000 });
+        } finally {
+            setIsUploading(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} size={{ base: 'full', md: 'lg' }}>
             <ModalOverlay backdropFilter="blur(5px)" />
             <ModalContent bg="gray.900" border="1px solid" borderColor="whiteAlpha.200" m={{ base: 0, md: 4 }}>
-                <ModalHeader color="jazzy.neon">System Settings</ModalHeader>
+                <ModalHeader color="jazzy.neon">Settings</ModalHeader>
                 <ModalCloseButton />
                 <ModalBody pb={6}>
                     <VStack spacing={6} align="stretch">
+                        {/* Backup & Restore - Available to all admins */}
                         <Box>
                             <Heading size="sm" mb={3} display="flex" alignItems="center" gap={2}>
-                                <FiUserPlus /> Manage Committee
+                                <FiDownload /> Backup & Restore
                             </Heading>
-                            <Flex gap={2} mb={4} direction={{ base: 'column', sm: 'row' }}>
-                                <Input
-                                    placeholder="Add Admin Phone Number"
-                                    value={newAdmin}
-                                    onChange={(e) => setNewAdmin(e.target.value)}
-                                    bg="whiteAlpha.50"
-                                    borderColor="whiteAlpha.300"
-                                    flex={1}
-                                />
-                                <Button colorScheme="green" px={8} onClick={handleAddAdmin} w={{ base: 'full', sm: 'auto' }}>Add</Button>
-                            </Flex>
-                            <Text fontSize="xs" color="gray.500" mb={1}>Current Admins:</Text>
-                            <Box bg="whiteAlpha.50" p={3} borderRadius="md" maxH="150px" overflowY="auto">
-                                <UnorderedList spacing={1}>
-                                    {admins.map(a => (
-                                        <ListItem key={a} fontSize="sm">
-                                            {a} {superAdmins.includes(a) && <Text as="span" color="jazzy.neon" fontSize="xs" ml={2}>(Super-Admin)</Text>}
-                                        </ListItem>
-                                    ))}
-                                </UnorderedList>
-                            </Box>
-                        </Box>
-
-                        <Divider borderColor="whiteAlpha.300" />
-
-                        <Box>
-                            <Heading size="sm" mb={3} color="red.400" display="flex" alignItems="center" gap={2}>
-                                <FiTrash2 /> Danger Zone
-                            </Heading>
-                            <Button
-                                colorScheme="red"
-                                variant="outline"
-                                w="full"
-                                onClick={() => setActiveSection('reset-1')}
-                            >
-                                Master Reset System
-                            </Button>
-                            <Text fontSize="xs" color="gray.500" mt={2}>
-                                This will reset all match scores and statuses back to the original scheduled state. Players and groupings will not be affected.
+                            <Text fontSize="xs" color="gray.500" mb={3}>
+                                Download a backup of the tournament data or restore from a previous backup.
                             </Text>
+                            <VStack spacing={3} align="stretch">
+                                <Button
+                                    colorScheme="blue"
+                                    onClick={handleDownloadBackup}
+                                    leftIcon={<FiDownload />}
+                                    size="sm"
+                                >
+                                    Download Backup
+                                </Button>
+                                <Box>
+                                    <Input
+                                        type="file"
+                                        accept=".json"
+                                        ref={fileInputRef}
+                                        onChange={handleUploadBackup}
+                                        display="none"
+                                        id="backup-upload-settings"
+                                    />
+                                    <Button
+                                        as="label"
+                                        htmlFor="backup-upload-settings"
+                                        colorScheme="orange"
+                                        cursor="pointer"
+                                        isLoading={isUploading}
+                                        loadingText="Uploading..."
+                                        leftIcon={<FiUpload />}
+                                        size="sm"
+                                        w="full"
+                                    >
+                                        Upload Backup
+                                    </Button>
+                                </Box>
+                                <Text fontSize="xs" color="orange.400">
+                                    ⚠️ Uploading a backup will replace all current tournament data.
+                                </Text>
+                            </VStack>
                         </Box>
+
+                        {/* Super Admin Only Sections */}
+                        {isSuperAdmin && (
+                            <>
+                                <Divider borderColor="whiteAlpha.300" />
+
+                                <Box>
+                                    <Heading size="sm" mb={3} display="flex" alignItems="center" gap={2}>
+                                        <FiUserPlus /> Manage Committee
+                                    </Heading>
+                                    <Flex gap={2} mb={4} direction={{ base: 'column', sm: 'row' }}>
+                                        <Input
+                                            placeholder="Add Admin Phone Number"
+                                            value={newAdmin}
+                                            onChange={(e) => setNewAdmin(e.target.value)}
+                                            bg="whiteAlpha.50"
+                                            borderColor="whiteAlpha.300"
+                                            flex={1}
+                                        />
+                                        <Button colorScheme="green" px={8} onClick={handleAddAdmin} w={{ base: 'full', sm: 'auto' }}>Add</Button>
+                                    </Flex>
+                                    <Text fontSize="xs" color="gray.500" mb={1}>Current Admins:</Text>
+                                    <Box bg="whiteAlpha.50" p={3} borderRadius="md" maxH="150px" overflowY="auto">
+                                        <UnorderedList spacing={1}>
+                                            {admins.map(a => (
+                                                <ListItem key={a} fontSize="sm">
+                                                    {a} {superAdmins.includes(a) && <Text as="span" color="jazzy.neon" fontSize="xs" ml={2}>(Super-Admin)</Text>}
+                                                </ListItem>
+                                            ))}
+                                        </UnorderedList>
+                                    </Box>
+                                </Box>
+
+                                <Divider borderColor="whiteAlpha.300" />
+
+                                <Box>
+                                    <Heading size="sm" mb={3} color="red.400" display="flex" alignItems="center" gap={2}>
+                                        <FiTrash2 /> Danger Zone
+                                    </Heading>
+                                    <Button
+                                        colorScheme="red"
+                                        variant="outline"
+                                        w="full"
+                                        onClick={() => setActiveSection('reset-1')}
+                                    >
+                                        Master Reset System
+                                    </Button>
+                                    <Text fontSize="xs" color="gray.500" mt={2}>
+                                        This will reset all match scores and statuses back to the original scheduled state. Players and groupings will not be affected.
+                                    </Text>
+                                </Box>
+                            </>
+                        )}
                     </VStack>
                 </ModalBody>
             </ModalContent>

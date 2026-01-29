@@ -2,7 +2,11 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
 const { readData, writeData, readAdmins, writeAdmins, readSuperAdmins } = require('./db');
+
+// Configure multer for file upload (store in memory)
+const upload = multer({ storage: multer.memoryStorage() });
 const { COMMITTEE_PHONES } = require('./constants');
 const { logSuperAdminActivity, readSuperAdminLogs } = require('./logger');
 
@@ -164,6 +168,73 @@ router.post('/players/update', (req, res) => {
     writeData(data);
     req.io.emit('DATA_REFRESH', data); // Full refresh maybe easier for players list changes
     res.json({ success: true });
+});
+
+// GET /api/backup/download - Download tournament.json backup (Committee Only)
+router.get('/backup/download', (req, res) => {
+    const { phone } = req.query;
+    const admins = readAdmins();
+    if (!admins.includes(phone)) {
+        return res.status(403).json({ error: "Forbidden: Admin access required" });
+    }
+
+    const data = readData();
+    if (!data) {
+        return res.status(500).json({ error: "Error reading tournament data" });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `tournament-backup-${timestamp}.json`;
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(JSON.stringify(data, null, 2));
+});
+
+// POST /api/backup/upload - Upload and restore tournament.json backup (Committee Only)
+router.post('/backup/upload', upload.single('backup'), (req, res) => {
+    const { phone } = req.body;
+    const admins = readAdmins();
+    if (!admins.includes(phone)) {
+        return res.status(403).json({ error: "Forbidden: Admin access required" });
+    }
+
+    if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    try {
+        const fileContent = req.file.buffer.toString('utf8');
+        const data = JSON.parse(fileContent);
+
+        // Basic validation: check if required fields exist
+        if (!data.players || !data.matches || !data.categories || !data.courts) {
+            return res.status(400).json({ error: "Invalid backup file: missing required fields (players, matches, categories, courts)" });
+        }
+
+        // Write the uploaded data
+        const success = writeData(data);
+        if (!success) {
+            return res.status(500).json({ error: "Error writing tournament data" });
+        }
+
+        // Emit socket event to refresh all clients
+        req.io.emit('DATA_REFRESH', data);
+
+        res.json({
+            success: true,
+            message: "Backup restored successfully",
+            stats: {
+                players: data.players.length,
+                matches: data.matches.length,
+                categories: data.categories.length,
+                courts: data.courts.length
+            }
+        });
+    } catch (err) {
+        console.error("Error restoring backup:", err);
+        res.status(400).json({ error: "Invalid JSON file" });
+    }
 });
 
 module.exports = router;

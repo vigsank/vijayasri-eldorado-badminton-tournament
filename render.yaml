@@ -14,3 +14,7 @@ services:
       - key: PORT
         value: 3001
     healthCheckPath: /api/data
+    disk:
+      name: data-disk
+      mountPath: /app/server/data
+      sizeGB: 1
