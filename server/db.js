@@ -1,97 +1,111 @@
+const { MongoClient } = require('mongodb');
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = path.join(__dirname, 'data');
-const ASSETS_DIR = path.join(__dirname, 'assets');
-const TOURNAMENT_FILE = path.join(DATA_DIR, 'tournament.json');
-const TOURNAMENT_SEED_FILE = path.join(ASSETS_DIR, 'tournament.seed.json');
-const ADMINS_FILE = path.join(DATA_DIR, 'admins.json');
-const SUPER_ADMINS_FILE = path.join(DATA_DIR, 'super-admins.json');
-const { COMMITTEE_PHONES } = require('./constants');
+const uri = process.env.MONGODB_URI;
+const dbName = process.env.DB_NAME || 'badminton';
+const TOURNAMENT_ID = process.env.TOURNAMENT_ID || 'default';
+const LOCAL_TOURNAMENT_JSON = path.join(__dirname, 'data', 'tournament.json');
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+let client;
+let db;
+
+async function initDb() {
+  if (!uri || typeof uri !== 'string' || !uri.startsWith('mongodb')) {
+    throw new Error('MONGODB_URI is not set or invalid');
+  }
+  if (!client) {
+    client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
+    await client.connect();
+    db = client.db(dbName);
+    // Optional ping to verify connectivity
+    await db.command({ ping: 1 });
+  }
+  return db;
 }
 
-// Initialize tournament file from seed if not exists
-if (!fs.existsSync(TOURNAMENT_FILE)) {
-    console.log('Tournament data file not found. Initializing from seed...');
-    if (fs.existsSync(TOURNAMENT_SEED_FILE)) {
-        fs.copyFileSync(TOURNAMENT_SEED_FILE, TOURNAMENT_FILE);
-        console.log('Tournament data initialized from seed file.');
-    } else {
-        console.log('Seed file not found. Creating empty tournament data.');
-        fs.writeFileSync(TOURNAMENT_FILE, JSON.stringify({
-            players: [],
-            matches: [],
-            categories: [],
-            courts: []
-        }, null, 2));
+async function readData() {
+  try {
+    const d = await initDb();
+    const doc = await d.collection('tournaments').findOne({ _id: TOURNAMENT_ID });
+    if (!doc) {
+      // Load from local JSON file as base data
+      let seed;
+      try {
+        const raw = fs.readFileSync(LOCAL_TOURNAMENT_JSON, 'utf8');
+        const parsed = JSON.parse(raw);
+        seed = { _id: TOURNAMENT_ID, ...parsed, createdAt: new Date() };
+        await d.collection('tournaments').insertOne(seed);
+        return seed;
+      } catch (fileErr) {
+        console.error('Failed to read local tournament.json:', fileErr);
+        throw new Error('Missing base data: server/data/tournament.json');
+      }
     }
+    return doc;
+  } catch (err) {
+    console.error('Error reading data:', err);
+    return null;
+  }
 }
 
-// Initialize admins file if not exists
-if (!fs.existsSync(ADMINS_FILE)) {
-    fs.writeFileSync(ADMINS_FILE, JSON.stringify(COMMITTEE_PHONES, null, 2));
+async function writeData(data) {
+  try {
+    const d = await initDb();
+    await d.collection('tournaments').updateOne(
+      { _id: TOURNAMENT_ID },
+      { $set: { ...data, _id: TOURNAMENT_ID, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    return true;
+  } catch (err) {
+    console.error('Error writing data:', err);
+    return false;
+  }
 }
 
-const readData = () => {
-    try {
-        const data = fs.readFileSync(TOURNAMENT_FILE, 'utf8');
-        return JSON.parse(data);
-    } catch (err) {
-        console.error("Error reading data:", err);
-        return null;
-    }
-};
+async function readAdmins() {
+  try {
+    const d = await initDb();
+    const doc = await d.collection('admins').findOne({ _id: 'admins' });
+    return doc?.list || [];
+  } catch (err) {
+    console.error('Error reading admins:', err);
+    return [];
+  }
+}
 
-const writeData = (data) => {
-    try {
-        fs.writeFileSync(TOURNAMENT_FILE, JSON.stringify(data, null, 2));
-        return true;
-    } catch (err) {
-        console.error("Error writing data:", err);
-        return false;
-    }
-};
+async function writeAdmins(admins) {
+  try {
+    const d = await initDb();
+    await d.collection('admins').updateOne(
+      { _id: 'admins' },
+      { $set: { list: admins, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    return true;
+  } catch (err) {
+    console.error('Error writing admins:', err);
+    return false;
+  }
+}
 
-const readAdmins = () => {
-    try {
-        if (!fs.existsSync(ADMINS_FILE)) return COMMITTEE_PHONES;
-        const data = fs.readFileSync(ADMINS_FILE, 'utf8');
-        return JSON.parse(data);
-    } catch (err) {
-        console.error("Error reading admins:", err);
-        return COMMITTEE_PHONES;
-    }
-};
-
-const writeAdmins = (admins) => {
-    try {
-        fs.writeFileSync(ADMINS_FILE, JSON.stringify(admins, null, 2));
-        return true;
-    } catch (err) {
-        console.error("Error writing admins:", err);
-        return false;
-    }
-};
-
-const readSuperAdmins = () => {
-    try {
-        if (!fs.existsSync(SUPER_ADMINS_FILE)) return [];
-        const data = fs.readFileSync(SUPER_ADMINS_FILE, 'utf8');
-        return JSON.parse(data);
-    } catch (err) {
-        console.error("Error reading super admins:", err);
-        return [];
-    }
-};
+async function readSuperAdmins() {
+  try {
+    const d = await initDb();
+    const doc = await d.collection('super_admins').findOne({ _id: 'super_admins' });
+    return doc?.list || [];
+  } catch (err) {
+    console.error('Error reading super admins:', err);
+    return [];
+  }
+}
 
 module.exports = {
-    readData,
-    writeData,
-    readAdmins,
-    writeAdmins,
-    readSuperAdmins
+  readData,
+  writeData,
+  readAdmins,
+  writeAdmins,
+  readSuperAdmins,
+  initDb
 };

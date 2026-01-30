@@ -4,6 +4,8 @@ const { Server } = require("socket.io");
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { initDb, readData } = require('./db');
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
@@ -52,9 +54,24 @@ if (isProduction) {
     });
 }
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
     console.log(`Server listening on port ${PORT}`);
     if (isProduction) {
         console.log('Running in production mode - serving static files');
+    }
+    if (!process.env.MONGODB_URI) {
+        console.warn('MONGODB_URI is not set. Persistence will not work.');
+    } else {
+        try {
+            await initDb();
+            console.log('Connected to MongoDB');
+            // Ensure tournament data exists; seeds from local JSON if missing
+            const data = await readData();
+            if (data) {
+                console.log('Tournament data is initialized. Players:', data.players?.length || 0, 'Matches:', data.matches?.length || 0);
+            }
+        } catch (e) {
+            console.error('MongoDB connection failed:', e);
+        }
     }
 });
