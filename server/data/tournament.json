@@ -535,8 +535,8 @@
       "court": "Court 5",
       "category": "Kids Singles Boy",
       "stage": "Semi 1",
-      "player1": "K Anish Reddy",
-      "player2": "Trijal Shetty",
+      "player1": "Winner Gr A",
+      "player2": "Winner Gr B",
       "score": {
         "p1": 0,
         "p2": 0
@@ -552,8 +552,8 @@
       "court": "Court 6",
       "category": "Kids Singles Boy",
       "stage": "Semi 2",
-      "player1": "Dakshith Minod",
-      "player2": "Harshith. S",
+      "player1": "Winner Gr C",
+      "player2": "Winner Gr D",
       "score": {
         "p1": 0,
         "p2": 0
@@ -569,8 +569,8 @@
       "court": "Court 5",
       "category": "Kids Singles Boy",
       "stage": "Final",
-      "player1": "K Anish Reddy",
-      "player2": "Harshith. S",
+      "player1": "Winner SF 1",
+      "player2": "Winner SF 2",
       "score": {
         "p1": 0,
         "p2": 0
@@ -756,8 +756,8 @@
       "court": "Court 7",
       "category": "Kids Singles Girl",
       "stage": "Semi 1",
-      "player1": "Ananya Singh",
-      "player2": "Aradhya Seal",
+      "player1": "Rank 1 Gr A",
+      "player2": "Rank 2 Gr B",
       "score": {
         "p1": 0,
         "p2": 0
@@ -773,8 +773,8 @@
       "court": "Court 6",
       "category": "Kids Singles Girl",
       "stage": "Semi 2",
-      "player1": "Divyanshi Sahu",
-      "player2": "Aadhya Srivastava",
+      "player1": "Rank 1 Gr B",
+      "player2": "Rank 2 Gr A",
       "score": {
         "p1": 0,
         "p2": 0
@@ -790,8 +790,8 @@
       "court": "Court 6",
       "category": "Kids Singles Girl",
       "stage": "Final",
-      "player1": "Ananya Singh",
-      "player2": "Aadhya Srivastava",
+      "player1": "Winner SF 1",
+      "player2": "Winner SF 2",
       "score": {
         "p1": 0,
         "p2": 0
@@ -875,8 +875,8 @@
       "court": "Court 7",
       "category": "Mens Doubles",
       "stage": "Final",
-      "player1": "Hari/Vinod",
-      "player2": "Subir/Nikhil",
+      "player1": "Rank 1 Team",
+      "player2": "Rank 2 Team",
       "score": {
         "p1": 0,
         "p2": 0
@@ -1045,8 +1045,8 @@
       "court": "Court 5",
       "category": "Mens Singles",
       "stage": "Semi 1",
-      "player1": "Prabhu Prasad",
-      "player2": "Anand",
+      "player1": "Rank 1 Gr A",
+      "player2": "Rank 2 Gr B",
       "score": {
         "p1": 0,
         "p2": 0
@@ -1062,8 +1062,8 @@
       "court": "Court 7",
       "category": "Mens Singles",
       "stage": "Semi 2",
-      "player1": "Subir",
-      "player2": "Venkat Gumma",
+      "player1": "Rank 1 Gr B",
+      "player2": "Rank 2 Gr A",
       "score": {
         "p1": 0,
         "p2": 0
@@ -1079,8 +1079,8 @@
       "court": "Court 5",
       "category": "Mens Singles",
       "stage": "Final",
-      "player1": "Prabhu Prasad",
-      "player2": "Venkat Gumma",
+      "player1": "Winner SF 1",
+      "player2": "Winner SF 2",
       "score": {
         "p1": 0,
         "p2": 0
@@ -1215,8 +1215,8 @@
       "court": "Court 6",
       "category": "Mixed Doubles",
       "stage": "Final",
-      "player1": "Hari/Ramya",
-      "player2": "Vinod/Cini",
+      "player1": "Rank 1 Team",
+      "player2": "Rank 2 Team",
       "score": {
         "p1": 0,
         "p2": 0
@@ -1283,8 +1283,8 @@
       "court": "Court 5",
       "category": "Womens Doubles",
       "stage": "Final",
-      "player1": "Divya Singh/Sinooba MK",
-      "player2": "Ramya/Sonali",
+      "player1": "Rank 1 Team",
+      "player2": "Rank 2 Team",
       "score": {
         "p1": 0,
         "p2": 0
@@ -1402,8 +1402,8 @@
       "court": "Court 5",
       "category": "Womens Singles",
       "stage": "Semi 1",
-      "player1": "Divya Singh",
-      "player2": "Sonali",
+      "player1": "Rank 1 Gr A",
+      "player2": "Rank 2 Gr B",
       "score": {
         "p1": 0,
         "p2": 0
@@ -1419,8 +1419,8 @@
       "court": "Court 6",
       "category": "Womens Singles",
       "stage": "Semi 2",
-      "player1": "Nandita",
-      "player2": "Ramya",
+      "player1": "Rank 1 Gr B",
+      "player2": "Rank 2 Gr A",
       "score": {
         "p1": 0,
         "p2": 0
@@ -1436,8 +1436,8 @@
       "court": "Court 5",
       "category": "Womens Singles",
       "stage": "Final",
-      "player1": "Divya Singh",
-      "player2": "Nandita",
+      "player1": "Winner SF 1",
+      "player2": "Winner SF 2",
       "score": {
         "p1": 0,
         "p2": 0

@@ -10,9 +10,11 @@ const upload = multer({ storage: multer.memoryStorage() });
 const { COMMITTEE_PHONES } = require('./constants');
 const { logSuperAdminActivity, readSuperAdminLogs } = require('./logger');
 
+const BASE_TOURNAMENT_JSON = path.join(__dirname, 'data', 'tournament.json');
+
 // GET /api/data - Full Initial Data
-router.get('/data', (req, res) => {
-    const data = readData();
+router.get('/data', async (req, res) => {
+    const data = await readData();
     res.json(data);
 });
 
@@ -29,31 +31,31 @@ router.get('/rulebook', (req, res) => {
 });
 
 // POST /api/login - Check if committee
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
     const { phone } = req.body;
-    const admins = readAdmins();
-    const superAdmins = readSuperAdmins();
+    const admins = await readAdmins();
+    const superAdmins = await readSuperAdmins();
     const isCommittee = admins.includes(phone);
     const isSuperAdmin = superAdmins.includes(phone);
     res.json({ success: true, isCommittee, isSuperAdmin, phone });
 });
 
 // GET /api/admin/list - Get list of admins (Super-Admin only)
-router.get('/admin/list', (req, res) => {
+router.get('/admin/list', async (req, res) => {
     const { phone } = req.query;
-    const superAdmins = readSuperAdmins();
+    const superAdmins = await readSuperAdmins();
     if (!superAdmins.includes(phone)) return res.status(403).json({ error: "Forbidden" });
 
     // Log super-admin activity
     logSuperAdminActivity(phone, 'VIEW_ADMIN_LIST', { action: 'Retrieved admin list' });
 
-    const admins = readAdmins();
+    const admins = await readAdmins();
     res.json({ admins });
 });
 
 // GET /api/admin/super-admins - Get list of super admins
-router.get('/admin/super-admins', (req, res) => {
-    const superAdmins = readSuperAdmins();
+router.get('/admin/super-admins', async (req, res) => {
+    const superAdmins = await readSuperAdmins();
     res.json({ superAdmins });
 });
 
@@ -71,16 +73,16 @@ router.get('/admin/activity-logs', (req, res) => {
 });
 
 // POST /api/admin/add - Add a new admin (Super-Admin only)
-router.post('/admin/add', (req, res) => {
+router.post('/admin/add', async (req, res) => {
     const { superPhone, newAdminPhone } = req.body;
-    const superAdmins = readSuperAdmins();
+    const superAdmins = await readSuperAdmins();
     if (!superAdmins.includes(superPhone)) return res.status(403).json({ error: "Forbidden" });
 
-    const admins = readAdmins();
+    const admins = await readAdmins();
     const wasAdded = !admins.includes(newAdminPhone);
     if (wasAdded) {
         admins.push(newAdminPhone);
-        writeAdmins(admins);
+        await writeAdmins(admins);
     }
 
     // Log super-admin activity
@@ -94,40 +96,37 @@ router.post('/admin/add', (req, res) => {
 });
 
 // POST /admin/reset - Master Reset (Super-Admin only)
-router.post('/admin/reset', (req, res) => {
+router.post('/admin/reset', async (req, res) => {
     const { phone } = req.body;
-    const superAdmins = readSuperAdmins();
+    const superAdmins = await readSuperAdmins();
     if (!superAdmins.includes(phone)) return res.status(403).json({ error: "Forbidden" });
 
-    const data = readData();
-    const totalMatchesReset = data.matches.length;
+    // Load base tournament data from local JSON and overwrite MongoDB
+    try {
+        const raw = fs.readFileSync(BASE_TOURNAMENT_JSON, 'utf8');
+        const baseData = JSON.parse(raw);
+        await writeData(baseData);
 
-    // Only reset match results, keep everything else
-    data.matches = data.matches.map(match => ({
-        ...match,
-        score: { p1: 0, p2: 0 },
-        status: "SCHEDULED",
-        winner: null
-    }));
+        // Log super-admin activity
+        logSuperAdminActivity(phone, 'MASTER_RESET_TO_BASE', {
+            action: 'Replaced MongoDB tournament data with local base tournament.json',
+            players: baseData.players?.length || 0,
+            matches: baseData.matches?.length || 0
+        });
 
-    // Log super-admin activity
-    logSuperAdminActivity(phone, 'MASTER_RESET', {
-        totalMatchesReset,
-        action: 'Reset all match results to scheduled state'
-    });
-
-    writeData(data);
-    req.io.emit('DATA_REFRESH', data);
-    res.json({ success: true, message: "All match results have been reset to scheduled state." });
+        req.io.emit('DATA_REFRESH', baseData);
+        res.json({ success: true, message: "Tournament data reset to base from local tournament.json" });
+    } catch (e) {
+        console.error('Error resetting to base data:', e);
+        res.status(500).json({ error: 'Failed to load base tournament.json or write to database' });
+    }
 });
 
 // POST /api/matches/update - Update Score/Status (Committee Only)
-router.post('/matches/update', (req, res) => {
+router.post('/matches/update', async (req, res) => {
     const { matchId, score, status, winner, player1, player2 } = req.body;
-    // In a real app, verify token/session here. 
-    // For this simple app, we blindly trust requests for now (or could pass phone again)
 
-    const data = readData();
+    const data = await readData();
     const matchIndex = data.matches.findIndex(m => m.id === matchId);
 
     if (matchIndex === -1) {
@@ -145,7 +144,7 @@ router.post('/matches/update', (req, res) => {
     const processAdvancement = require('./auto_scheduler');
     const advanced = processAdvancement(data);
 
-    writeData(data); // Save everything
+    await writeData(data); // Save everything
 
     // Emit Socket Event
     req.io.emit('MATCH_UPDATE', data.matches[matchIndex]);
@@ -158,27 +157,27 @@ router.post('/matches/update', (req, res) => {
 });
 
 // POST /api/players/update - Update Player Name (Committee Only)
-router.post('/players/update', (req, res) => {
+router.post('/players/update', async (req, res) => {
     const { playerId, name } = req.body;
-    const data = readData();
+    const data = await readData();
     const player = data.players.find(p => p.id === playerId);
     if (!player) return res.status(404).json({ error: "Player not found" });
 
     player.name = name;
-    writeData(data);
-    req.io.emit('DATA_REFRESH', data); // Full refresh maybe easier for players list changes
+    await writeData(data);
+    req.io.emit('DATA_REFRESH', data);
     res.json({ success: true });
 });
 
 // GET /api/backup/download - Download tournament.json backup (Committee Only)
-router.get('/backup/download', (req, res) => {
+router.get('/backup/download', async (req, res) => {
     const { phone } = req.query;
-    const admins = readAdmins();
+    const admins = await readAdmins();
     if (!admins.includes(phone)) {
         return res.status(403).json({ error: "Forbidden: Admin access required" });
     }
 
-    const data = readData();
+    const data = await readData();
     if (!data) {
         return res.status(500).json({ error: "Error reading tournament data" });
     }
@@ -192,9 +191,9 @@ router.get('/backup/download', (req, res) => {
 });
 
 // POST /api/backup/upload - Upload and restore tournament.json backup (Committee Only)
-router.post('/backup/upload', upload.single('backup'), (req, res) => {
+router.post('/backup/upload', upload.single('backup'), async (req, res) => {
     const { phone } = req.body;
-    const admins = readAdmins();
+    const admins = await readAdmins();
     if (!admins.includes(phone)) {
         return res.status(403).json({ error: "Forbidden: Admin access required" });
     }
@@ -213,7 +212,7 @@ router.post('/backup/upload', upload.single('backup'), (req, res) => {
         }
 
         // Write the uploaded data
-        const success = writeData(data);
+        const success = await writeData(data);
         if (!success) {
             return res.status(500).json({ error: "Error writing tournament data" });
         }
