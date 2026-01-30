@@ -251,4 +251,282 @@ router.post('/backup/upload', upload.single('backup'), async (req, res) => {
     }
 });
 
+// GET /api/matches/:matchId/advancement-info - Get advancement information for a match
+router.get('/matches/:matchId/advancement-info', async (req, res) => {
+    const { matchId } = req.params;
+    const data = await readData();
+    const match = data.matches.find(m => m.id === matchId);
+    
+    if (!match) {
+        return res.status(404).json({ error: "Match not found" });
+    }
+
+    // Only provide advancement info for Semi-Finals and Finals
+    const isSemiFinal = match.stage && (match.stage.toLowerCase().includes('semi') || match.stage.toLowerCase().includes('sf'));
+    const isFinal = match.stage && match.stage.toLowerCase().includes('final') && !isSemiFinal;
+    
+    if (!isSemiFinal && !isFinal) {
+        return res.json({ hasAdvancement: false });
+    }
+
+    const { calculateStandings } = require('./standings');
+    const { standings, headToHead } = calculateStandings(data.matches);
+
+    const advancementInfo = {
+        hasAdvancement: true,
+        matchStage: match.stage,
+        category: match.category,
+        player1: {
+            name: match.player1,
+            advancementDetails: null
+        },
+        player2: {
+            name: match.player2,
+            advancementDetails: null
+        }
+    };
+
+    // Helper to get advancement explanation
+    const getAdvancementExplanation = (playerName, category, matchStage) => {
+        // Check if it's a placeholder pattern
+        const winGrpMatch = playerName.match(/Winner\s+(?:Group|Grp|Gr)\s+([A-Z0-9]+)/i);
+        const runGrpMatch = playerName.match(/Runner\s+(?:Group|Grp|Gr)\s+([A-Z0-9]+)/i);
+        const rankGrpMatch = playerName.match(/Rank\s+(\d+)\s+(?:Group|Grp|Gr)\s+([A-Z0-9]+)/i);
+        const rankTeamMatch = playerName.match(/Rank\s+(\d+)\s+Team/i);
+        const topTeamMatch = playerName.match(/Top\s+Team\s+(\d+)/i);
+        const winSFMatch = playerName.match(/Winner\s+SF\s+(\d+)/i);
+
+        let explanation = {
+            type: 'unknown',
+            details: null
+        };
+
+        // If it's a real player name (not a placeholder), reverse-engineer their advancement
+        const isPlaceholder = winGrpMatch || runGrpMatch || rankGrpMatch || rankTeamMatch || topTeamMatch || winSFMatch;
+        
+        if (!isPlaceholder) {
+            // For Finals, check if they won a semi-final
+            if (isFinal) {
+                const sfMatches = data.matches.filter(m => 
+                    m.category === category && 
+                    (m.stage.toLowerCase().includes('semi') || m.stage.toLowerCase().includes('sf'))
+                );
+                
+                for (let i = 0; i < sfMatches.length; i++) {
+                    const sfMatch = sfMatches[i];
+                    if (sfMatch.winner === playerName && sfMatch.status === 'COMPLETED') {
+                        const sfNum = sfMatch.stage.match(/\d+/)?.[0] || (i + 1);
+                        return {
+                            type: 'semifinal-winner',
+                            semifinalNumber: sfNum,
+                            match: {
+                                player1: sfMatch.player1,
+                                player2: sfMatch.player2,
+                                score: sfMatch.score,
+                                winner: sfMatch.winner
+                            },
+                            description: `Winner of Semi-Final ${sfNum}: ${sfMatch.winner} defeated ${sfMatch.winner === sfMatch.player1 ? sfMatch.player2 : sfMatch.player1} (${sfMatch.score?.p1 || 0} - ${sfMatch.score?.p2 || 0})`
+                        };
+                    }
+                }
+            }
+            
+            // For Semi-Finals or when semi-final check didn't find anything, check group standings
+            if (standings[category]) {
+                // First, try to find the player in group standings
+                for (const [groupName, groupStandings] of Object.entries(standings[category])) {
+                    const playerIndex = groupStandings.findIndex(p => p.name === playerName);
+                    
+                    if (playerIndex !== -1) {
+                        const position = playerIndex + 1;
+                        const standingsToShow = groupStandings.slice(0, Math.min(5, groupStandings.length)).map(p => ({
+                            name: p.name,
+                            won: p.won,
+                            lost: p.lost,
+                            pointsFor: p.pointsFor,
+                            pointsAgainst: p.pointsAgainst,
+                            pointDiff: p.pointDiff
+                        }));
+                        
+                        if (position === 1) {
+                            return {
+                                type: 'group-winner',
+                                group: groupName,
+                                position: 1,
+                                standings: standingsToShow,
+                                description: `Winner of Group ${groupName} (Rank 1 based on matches won, then point difference, then total points scored)`
+                            };
+                        } else if (position === 2) {
+                            return {
+                                type: 'group-runner',
+                                group: groupName,
+                                position: 2,
+                                standings: standingsToShow,
+                                description: `Runner-up of Group ${groupName} (Rank 2 based on matches won, then point difference, then total points scored)`
+                            };
+                        } else {
+                            return {
+                                type: 'group-rank',
+                                group: groupName,
+                                position: position,
+                                standings: standingsToShow,
+                                description: `Rank ${position} of Group ${groupName} (based on matches won, then point difference, then total points scored)`
+                            };
+                        }
+                    }
+                }
+                
+                // If not found in individual groups, check overall standings (for Pool-based or cross-group advancement)
+                let allPlayersInCat = [];
+                Object.values(standings[category]).forEach(grpList => {
+                    allPlayersInCat = [...allPlayersInCat, ...grpList];
+                });
+                
+                const { sortPlayers } = require('./standings');
+                sortPlayers(allPlayersInCat, category, "Pool", headToHead);
+                
+                const overallIndex = allPlayersInCat.findIndex(p => p.name === playerName);
+                if (overallIndex !== -1) {
+                    const position = overallIndex + 1;
+                    return {
+                        type: 'overall-rank',
+                        position: position,
+                        standings: allPlayersInCat.slice(0, Math.min(5, allPlayersInCat.length)).map(p => ({
+                            name: p.name,
+                            won: p.won,
+                            lost: p.lost,
+                            pointsFor: p.pointsFor,
+                            pointsAgainst: p.pointsAgainst,
+                            pointDiff: p.pointDiff
+                        })),
+                        description: `Overall Rank ${position} across all groups/pools (based on matches won, then head-to-head if applicable, then point difference, then total points scored)`
+                    };
+                }
+            }
+            
+            // If still not found, return unknown
+            return {
+                type: 'unknown',
+                details: null
+            };
+        }
+
+        // Handle placeholder patterns (original logic)
+        if (winGrpMatch) {
+            const grp = winGrpMatch[1];
+            const groupStandings = standings[category]?.[grp];
+            if (groupStandings && groupStandings.length > 0) {
+                explanation = {
+                    type: 'group-winner',
+                    group: grp,
+                    position: 1,
+                    standings: groupStandings.slice(0, 3).map(p => ({
+                        name: p.name,
+                        won: p.won,
+                        lost: p.lost,
+                        pointsFor: p.pointsFor,
+                        pointsAgainst: p.pointsAgainst,
+                        pointDiff: p.pointDiff
+                    })),
+                    description: `Winner of Group ${grp} (Rank 1 based on matches won, then point difference, then total points scored)`
+                };
+            }
+        } else if (runGrpMatch) {
+            const grp = runGrpMatch[1];
+            const groupStandings = standings[category]?.[grp];
+            if (groupStandings && groupStandings.length > 1) {
+                explanation = {
+                    type: 'group-runner',
+                    group: grp,
+                    position: 2,
+                    standings: groupStandings.slice(0, 3).map(p => ({
+                        name: p.name,
+                        won: p.won,
+                        lost: p.lost,
+                        pointsFor: p.pointsFor,
+                        pointsAgainst: p.pointsAgainst,
+                        pointDiff: p.pointDiff
+                    })),
+                    description: `Runner-up of Group ${grp} (Rank 2 based on matches won, then point difference, then total points scored)`
+                };
+            }
+        } else if (rankGrpMatch) {
+            const rank = parseInt(rankGrpMatch[1]);
+            const grp = rankGrpMatch[2];
+            const groupStandings = standings[category]?.[grp];
+            if (groupStandings && groupStandings.length >= rank) {
+                explanation = {
+                    type: 'group-rank',
+                    group: grp,
+                    position: rank,
+                    standings: groupStandings.slice(0, Math.min(3, groupStandings.length)).map(p => ({
+                        name: p.name,
+                        won: p.won,
+                        lost: p.lost,
+                        pointsFor: p.pointsFor,
+                        pointsAgainst: p.pointsAgainst,
+                        pointDiff: p.pointDiff
+                    })),
+                    description: `Rank ${rank} of Group ${grp} (based on matches won, then point difference, then total points scored)`
+                };
+            }
+        } else if (rankTeamMatch || topTeamMatch) {
+            const rank = parseInt(rankTeamMatch ? rankTeamMatch[1] : topTeamMatch[1]);
+            // Get aggregated standings across all groups/pools
+            let allPlayersInCat = [];
+            if (standings[category]) {
+                Object.values(standings[category]).forEach(grpList => {
+                    allPlayersInCat = [...allPlayersInCat, ...grpList];
+                });
+            }
+            // Sort globally
+            const { sortPlayers } = require('./standings');
+            sortPlayers(allPlayersInCat, category, "Pool", headToHead);
+            
+            if (allPlayersInCat.length >= rank) {
+                explanation = {
+                    type: 'overall-rank',
+                    position: rank,
+                    standings: allPlayersInCat.slice(0, Math.min(5, allPlayersInCat.length)).map(p => ({
+                        name: p.name,
+                        won: p.won,
+                        lost: p.lost,
+                        pointsFor: p.pointsFor,
+                        pointsAgainst: p.pointsAgainst,
+                        pointDiff: p.pointDiff
+                    })),
+                    description: `Overall Rank ${rank} across all ${Object.keys(standings[category]).length > 1 ? 'groups' : 'pool matches'} (based on matches won, then head-to-head if applicable, then point difference, then total points scored)`
+                };
+            }
+        } else if (winSFMatch) {
+            const sfNum = winSFMatch[1];
+            const sfMatch = data.matches.find(m =>
+                m.category === category &&
+                (m.stage.includes(`Semi ${sfNum}`) || m.stage.includes(`SF ${sfNum}`) || m.stage === `Semi ${sfNum}`)
+            );
+            if (sfMatch && sfMatch.status === 'COMPLETED' && sfMatch.winner) {
+                explanation = {
+                    type: 'semifinal-winner',
+                    semifinalNumber: sfNum,
+                    match: {
+                        player1: sfMatch.player1,
+                        player2: sfMatch.player2,
+                        score: sfMatch.score,
+                        winner: sfMatch.winner
+                    },
+                    description: `Winner of Semi-Final ${sfNum}: ${sfMatch.winner} defeated ${sfMatch.winner === sfMatch.player1 ? sfMatch.player2 : sfMatch.player1} (${sfMatch.score?.p1 || 0} - ${sfMatch.score?.p2 || 0})`
+                };
+            }
+        }
+
+        return explanation;
+    };
+
+    // Get advancement details for both players
+    advancementInfo.player1.advancementDetails = getAdvancementExplanation(match.player1, match.category, match.stage);
+    advancementInfo.player2.advancementDetails = getAdvancementExplanation(match.player2, match.category, match.stage);
+
+    res.json(advancementInfo);
+});
+
 module.exports = router;

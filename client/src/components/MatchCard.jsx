@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
-import { Box, Text, Badge, VStack, Button, ButtonGroup, useDisclosure, useToast } from '@chakra-ui/react';
+import { Badge, Box, Button, ButtonGroup, IconButton, Text, Tooltip, VStack, useDisclosure, useToast } from '@chakra-ui/react';
+
+import AdvancementInfoModal from './AdvancementInfoModal';
+import ChangePlayersModal from './ChangePlayersModal';
+import { InfoIcon } from '@chakra-ui/icons';
+import React from 'react';
+import ScoreModal from './ScoreModal';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
-import ScoreModal from './ScoreModal';
-import ChangePlayersModal from './ChangePlayersModal';
 
 const MotionBox = motion(Box);
 
@@ -18,10 +21,33 @@ const MatchCard = ({ match, isLive = false, allPlayers = [] }) => {
         onClose: onPlayerModalClose
     } = useDisclosure();
 
+    // Disclosure for Advancement Info Modal
+    const {
+        isOpen: isAdvancementModalOpen,
+        onOpen: onAdvancementModalOpen,
+        onClose: onAdvancementModalClose
+    } = useDisclosure();
+
     const toast = useToast();
 
     const isCompleted = match.status === 'COMPLETED';
     const hasWinner = match.winner && match.winner !== '';
+
+    // Check if match is semi-final or final
+    const isSemiFinal = match.stage && (match.stage.toLowerCase().includes('semi') || match.stage.toLowerCase().includes('sf'));
+    const isFinal = match.stage && match.stage.toLowerCase().includes('final') && !isSemiFinal;
+    const isPlayoffMatch = isSemiFinal || isFinal;
+
+    // Check if players have been advanced (not placeholders)
+    const isPlaceholder = (playerName) => {
+        return playerName && (
+            playerName.includes('Winner') || 
+            playerName.includes('Runner') || 
+            playerName.includes('Rank') ||
+            playerName.includes('Top Team')
+        );
+    };
+    const hasAdvancedPlayers = isPlayoffMatch && !isPlaceholder(match.player1) && !isPlaceholder(match.player2);
 
     const getStageColor = (stage) => {
         if (!stage) return "gray";
@@ -50,7 +76,7 @@ const MatchCard = ({ match, isLive = false, allPlayers = [] }) => {
                 body: JSON.stringify(body)
             });
             toast({ title: `Match marked as ${newStatus}`, status: "success", duration: 1500 });
-        } catch (err) {
+        } catch {
             toast({ title: "Error updating status", status: "error" });
         }
     };
@@ -86,6 +112,33 @@ const MatchCard = ({ match, isLive = false, allPlayers = [] }) => {
                         </Badge>
                     )}
                 </Box>
+
+                {/* Advancement Info Icon - Bottom Right */}
+                {hasAdvancedPlayers && (
+                    <Tooltip 
+                        label="View how players advanced to this stage" 
+                        placement="top"
+                        hasArrow
+                        bg="purple.600"
+                    >
+                        <IconButton
+                            icon={<InfoIcon />}
+                            position="absolute"
+                            bottom={2}
+                            right={2}
+                            size="sm"
+                            colorScheme="purple"
+                            variant="ghost"
+                            aria-label="Advancement Information"
+                            onClick={onAdvancementModalOpen}
+                            _hover={{
+                                bg: "purple.700",
+                                transform: "scale(1.1)"
+                            }}
+                            transition="all 0.2s"
+                        />
+                    </Tooltip>
+                )}
 
                 <Text color="gray.400" fontSize={{ base: '2xs', md: 'xs' }} mb={2} textTransform="uppercase" letterSpacing="wide" pr="40%">
                     {match.category}
@@ -172,6 +225,15 @@ const MatchCard = ({ match, isLive = false, allPlayers = [] }) => {
                 onClose={onPlayerModalClose}
                 allPlayers={allPlayers}
             />
+
+            {/* Advancement Info Modal */}
+            {hasAdvancedPlayers && (
+                <AdvancementInfoModal
+                    match={match}
+                    isOpen={isAdvancementModalOpen}
+                    onClose={onAdvancementModalClose}
+                />
+            )}
         </>
     );
 };
