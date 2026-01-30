@@ -161,6 +161,16 @@ const MatchCard = ({ match, isLive = false, allPlayers = [] }) => {
                 <Box mt={3} pt={3} borderTop="1px solid" borderColor="whiteAlpha.100">
                     {isAdmin ? (
                         <VStack spacing={2}>
+                            {/* Court and Time Info for Admins */}
+                            <Box width="full" display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                                <Text fontSize="xs" color="jazzy.300">
+                                    📍 {match.court || "TBD"}
+                                </Text>
+                                <Text fontSize="xs" color="gray.500">
+                                    {match.day} • {match.time}
+                                </Text>
+                            </Box>
+                            
                             <ButtonGroup size={{ base: 'sm', md: 'xs' }} isAttached variant="outline" width="full">
                                 <Button
                                     flex={1}
