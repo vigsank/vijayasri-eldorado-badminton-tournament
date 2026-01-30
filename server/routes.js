@@ -12,6 +12,11 @@ const { logSuperAdminActivity, readSuperAdminLogs } = require('./logger');
 
 const BASE_TOURNAMENT_JSON = path.join(__dirname, 'data', 'tournament.json');
 
+// Helper to normalize phone numbers to digits-only strings
+function normalizePhone(p) {
+    return String(p == null ? '' : p).replace(/\D/g, '');
+}
+
 // GET /api/data - Full Initial Data
 router.get('/data', async (req, res) => {
     const data = await readData();
@@ -33,21 +38,23 @@ router.get('/rulebook', (req, res) => {
 // POST /api/login - Check if committee
 router.post('/login', async (req, res) => {
     const { phone } = req.body;
-    const admins = await readAdmins();
-    const superAdmins = await readSuperAdmins();
-    const isCommittee = admins.includes(phone);
-    const isSuperAdmin = superAdmins.includes(phone);
-    res.json({ success: true, isCommittee, isSuperAdmin, phone });
+    const p = normalizePhone(phone);
+    const admins = (await readAdmins()).map(normalizePhone);
+    const superAdmins = (await readSuperAdmins()).map(normalizePhone);
+    const isCommittee = admins.includes(p);
+    const isSuperAdmin = superAdmins.includes(p);
+    res.json({ success: true, isCommittee, isSuperAdmin, phone: p });
 });
 
 // GET /api/admin/list - Get list of admins (Super-Admin only)
 router.get('/admin/list', async (req, res) => {
     const { phone } = req.query;
-    const superAdmins = await readSuperAdmins();
-    if (!superAdmins.includes(phone)) return res.status(403).json({ error: "Forbidden" });
+    const p = normalizePhone(phone);
+    const superAdmins = (await readSuperAdmins()).map(normalizePhone);
+    if (!superAdmins.includes(p)) return res.status(403).json({ error: "Forbidden" });
 
     // Log super-admin activity
-    logSuperAdminActivity(phone, 'VIEW_ADMIN_LIST', { action: 'Retrieved admin list' });
+    logSuperAdminActivity(p, 'VIEW_ADMIN_LIST', { action: 'Retrieved admin list' });
 
     const admins = await readAdmins();
     res.json({ admins });
@@ -60,13 +67,14 @@ router.get('/admin/super-admins', async (req, res) => {
 });
 
 // GET /api/admin/activity-logs - Get super-admin activity logs (Super-Admin only)
-router.get('/admin/activity-logs', (req, res) => {
+router.get('/admin/activity-logs', async (req, res) => {
     const { phone } = req.query;
-    const superAdmins = readSuperAdmins();
-    if (!superAdmins.includes(phone)) return res.status(403).json({ error: "Forbidden" });
+    const p = normalizePhone(phone);
+    const superAdmins = (await readSuperAdmins()).map(normalizePhone);
+    if (!superAdmins.includes(p)) return res.status(403).json({ error: "Forbidden" });
 
     // Log this access as well
-    logSuperAdminActivity(phone, 'VIEW_ACTIVITY_LOGS', { action: 'Retrieved activity logs' });
+    logSuperAdminActivity(p, 'VIEW_ACTIVITY_LOGS', { action: 'Retrieved activity logs' });
 
     const logs = readSuperAdminLogs();
     res.json({ logs });
@@ -75,19 +83,23 @@ router.get('/admin/activity-logs', (req, res) => {
 // POST /api/admin/add - Add a new admin (Super-Admin only)
 router.post('/admin/add', async (req, res) => {
     const { superPhone, newAdminPhone } = req.body;
-    const superAdmins = await readSuperAdmins();
-    if (!superAdmins.includes(superPhone)) return res.status(403).json({ error: "Forbidden" });
+    const sp = normalizePhone(superPhone);
+    const nap = normalizePhone(newAdminPhone);
+    const superAdmins = (await readSuperAdmins()).map(normalizePhone);
+    if (!superAdmins.includes(sp)) return res.status(403).json({ error: "Forbidden" });
 
-    const admins = await readAdmins();
-    const wasAdded = !admins.includes(newAdminPhone);
+    let admins = await readAdmins();
+    const adminSet = new Set(admins.map(normalizePhone));
+    const wasAdded = !adminSet.has(nap);
     if (wasAdded) {
-        admins.push(newAdminPhone);
+        // Persist normalized number to keep consistency
+        admins.push(nap);
         await writeAdmins(admins);
     }
 
     // Log super-admin activity
-    logSuperAdminActivity(superPhone, 'ADD_ADMIN', {
-        newAdminPhone,
+    logSuperAdminActivity(sp, 'ADD_ADMIN', {
+        newAdminPhone: nap,
         wasAdded,
         totalAdmins: admins.length
     });
@@ -98,8 +110,9 @@ router.post('/admin/add', async (req, res) => {
 // POST /admin/reset - Master Reset (Super-Admin only)
 router.post('/admin/reset', async (req, res) => {
     const { phone } = req.body;
-    const superAdmins = await readSuperAdmins();
-    if (!superAdmins.includes(phone)) return res.status(403).json({ error: "Forbidden" });
+    const p = normalizePhone(phone);
+    const superAdmins = (await readSuperAdmins()).map(normalizePhone);
+    if (!superAdmins.includes(p)) return res.status(403).json({ error: "Forbidden" });
 
     // Load base tournament data from local JSON and overwrite MongoDB
     try {
@@ -108,7 +121,7 @@ router.post('/admin/reset', async (req, res) => {
         await writeData(baseData);
 
         // Log super-admin activity
-        logSuperAdminActivity(phone, 'MASTER_RESET_TO_BASE', {
+        logSuperAdminActivity(p, 'MASTER_RESET_TO_BASE', {
             action: 'Replaced MongoDB tournament data with local base tournament.json',
             players: baseData.players?.length || 0,
             matches: baseData.matches?.length || 0
@@ -172,8 +185,9 @@ router.post('/players/update', async (req, res) => {
 // GET /api/backup/download - Download tournament.json backup (Committee Only)
 router.get('/backup/download', async (req, res) => {
     const { phone } = req.query;
-    const admins = await readAdmins();
-    if (!admins.includes(phone)) {
+    const p = normalizePhone(phone);
+    const admins = (await readAdmins()).map(normalizePhone);
+    if (!admins.includes(p)) {
         return res.status(403).json({ error: "Forbidden: Admin access required" });
     }
 
@@ -193,8 +207,9 @@ router.get('/backup/download', async (req, res) => {
 // POST /api/backup/upload - Upload and restore tournament.json backup (Committee Only)
 router.post('/backup/upload', upload.single('backup'), async (req, res) => {
     const { phone } = req.body;
-    const admins = await readAdmins();
-    if (!admins.includes(phone)) {
+    const p = normalizePhone(phone);
+    const admins = (await readAdmins()).map(normalizePhone);
+    if (!admins.includes(p)) {
         return res.status(403).json({ error: "Forbidden: Admin access required" });
     }
 
